@@ -1,0 +1,4 @@
+PlayerLevel,E_ATK,E_DEF,E_HP,E_XP,DropGroupID
+1,5,0,30,50,1001
+2,8,1,50,80,1001
+3,15,3,100,150,1002
