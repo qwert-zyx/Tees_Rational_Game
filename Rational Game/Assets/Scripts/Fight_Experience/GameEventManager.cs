@@ -7,7 +7,9 @@ public static class GameEventManager
     public static event Action OnGameStart;
     public static void CallGameStart() => OnGameStart?.Invoke();
 
-    // 2. 怪物死亡信号 (传递参数：经验，怪物等级，掉落组ID)
+    // 2. 怪物死亡信号 
+    // 参数：xp(经验), level(怪物等级), groupID(掉落组ID)
+    // 注意：哪怕爬塔模式不需要经验，为了兼容性，我们还是传这三个参数
     public static event Action<int, int, int> OnEnemyDead;
     public static void CallEnemyDead(int xp, int level, int groupID) => OnEnemyDead?.Invoke(xp, level, groupID);
 
@@ -23,8 +25,19 @@ public static class GameEventManager
     public static event Action<int> OnWeaponSwapped;
     public static void CallWeaponSwapped(int weaponID) => OnWeaponSwapped?.Invoke(weaponID);
 
-    // 【新增】玩家状态改变信号
-    // 参数：PlayerState (是移动还是攻击？)
+    // 6. 玩家状态改变信号 (是移动还是攻击？)
     public static event Action<PlayerState> OnPlayerStateChanged;
     public static void CallPlayerStateChanged(PlayerState state) => OnPlayerStateChanged?.Invoke(state);
+
+    // ==========================================
+    // 【新增】爬塔专用信号
+    // ==========================================
+
+    // 7. 关卡胜利 (爬塔)
+    public static event Action OnLevelVictory;
+    public static void CallLevelVictory() => OnLevelVictory?.Invoke();
+
+    // 8. 关卡失败 (爬塔 - 时间到或玩家死)
+    public static event Action OnLevelFailed;
+    public static void CallLevelFailed() => OnLevelFailed?.Invoke();
 }

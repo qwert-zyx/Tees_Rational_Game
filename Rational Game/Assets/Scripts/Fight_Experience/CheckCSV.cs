@@ -1,20 +1,20 @@
 using UnityEngine;
-using System.Collections;
+using UnityEngine.SceneManagement; // 【必须引用】用于识别场景名称
 
 public class CheckCSV : MonoBehaviour
 {
-    // 使用 Awake 确保比 InitializatePlayer 先准备好
     void Awake()
     {
+        // 这里的 Awake 只负责监听，不读数据，防止报错
         GameEventManager.OnGameStart += UpdateAllStats;
         GameEventManager.OnDataNeedUpdate += UpdateAllStats;
     }
-    void Start() // ✅ 这里是安全的，此时所有脚本的 Awake 都跑完了
+
+    void Start() // ✅ 安全入口
     {
-        // 强制先读取一次数据，确保怪物有攻击力
+        // 强制执行一次，确保开局数据载入
         UpdateAllStats();
     }
-
 
     void OnDestroy()
     {
@@ -22,94 +22,144 @@ public class CheckCSV : MonoBehaviour
         GameEventManager.OnDataNeedUpdate -= UpdateAllStats;
     }
 
+    // ==========================================
     // 核心查表逻辑
+    // ==========================================
     public void UpdateAllStats()
     {
+        // 0. 防空检查
+        if (PlayerBaseData.Instance == null)
+        {
+            Debug.LogError("严重错误：PlayerBaseData 缺失！");
+            return;
+        }
+
         var db = PlayerBaseData.Instance;
 
         // ==========================================
-        // 第一步：查 PlayerData (根据等级查基础属性)
+        // 【关键逻辑】根据场景名称自动切换模式
+        // ==========================================
+        string sceneName = SceneManager.GetActiveScene().name;
+
+        if (sceneName == "Fight_Jail")
+        {
+            db.isTowerMode = true;
+            Debug.Log("【环境检测】当前是爬塔场景 (Fight_Jail)，将读取塔数据。");
+        }
+        else if (sceneName == "Fight_Experience")
+        {
+            db.isTowerMode = false;
+            Debug.Log("【环境检测】当前是刷经验场景 (Fight_Experience)，将读取挂机数据。");
+        }
+        // 如果在主菜单或其他场景，保持原状或默认处理
+
+        // ==========================================
+        // 第一步：查 PlayerData (始终根据玩家等级)
         // ==========================================
         TextAsset pData = Resources.Load<TextAsset>("CSV_Data/PlayerData");
-        string[] pLines = pData.text.Split('\n');
-
-        for (int i = 1; i < pLines.Length; i++)
+        if (pData != null)
         {
-            string[] row = pLines[i].Split(',');
-            if (row.Length < 5) continue;
-
-            if (int.Parse(row[0]) == db.level) // 找到当前等级
+            string[] pLines = pData.text.Split('\n');
+            for (int i = 1; i < pLines.Length; i++)
             {
-                db.nextLevelXP = int.Parse(row[1]);
-                db.finalATK = float.Parse(row[2]); // 先存入基础攻击
-                // 暂时把基础HP当作MaxHP，后面会加上武器加成
-                db.finalMaxHP = float.Parse(row[4]);
-                break;
+                string[] row = pLines[i].Split(',');
+                if (row.Length < 5) continue;
+
+                if (int.Parse(row[0]) == db.level)
+                {
+                    db.nextLevelXP = int.Parse(row[1]);
+                    db.finalATK = float.Parse(row[2]);
+                    // row[3] 可能是防御，你代码里跳过了
+                    db.finalMaxHP = float.Parse(row[4]);
+                    break;
+                }
             }
         }
 
         // ==========================================
-        // 第二步：查 WeaponData (根据武器ID查加成)
+        // 第二步：查 WeaponData (根据武器ID)
         // ==========================================
         TextAsset wData = Resources.Load<TextAsset>("CSV_Data/WeaponData");
-        string[] wLines = wData.text.Split('\n');
-
-        for (int i = 1; i < wLines.Length; i++)
+        if (wData != null)
         {
-            string[] row = wLines[i].Split(',');
-            if (row.Length < 5) continue;
-
-            if (int.Parse(row[0]) == db.currentWeaponID)
+            string[] wLines = wData.text.Split('\n');
+            for (int i = 1; i < wLines.Length; i++)
             {
-                db.weaponATK = float.Parse(row[2]);
-                db.weaponHP = float.Parse(row[4]);
-                break;
+                string[] row = wLines[i].Split(',');
+                if (row.Length < 5) continue;
+
+                if (int.Parse(row[0]) == db.currentWeaponID)
+                {
+                    db.weaponATK = float.Parse(row[2]);
+                    db.weaponHP = float.Parse(row[4]);
+                    break;
+                }
             }
         }
 
         // ==========================================
-        // 第三步：查 EnemyData (查当前等级怪物的模板)
+        // 第三步：查 EnemyData (【核心修改】动态文件名与索引)
         // ==========================================
-        TextAsset eData = Resources.Load<TextAsset>("CSV_Data/EnemyData");
-        string[] eLines = eData.text.Split('\n');
 
-        for (int i = 1; i < eLines.Length; i++)
+        // A. 决定读哪个文件
+        string enemyFileName = db.isTowerMode ? "TowerEnemyData" : "EnemyData";
+
+        // B. 决定查哪一行 (爬塔查 targetLevelID，挂机查 playerLevel)
+        int searchTargetID = db.isTowerMode ? db.targetLevelID : db.level;
+
+        TextAsset eData = Resources.Load<TextAsset>("CSV_Data/" + enemyFileName);
+
+        if (eData != null)
         {
-            string[] row = eLines[i].Split(',');
-            if (row.Length < 6) continue;
+            string[] eLines = eData.text.Split('\n');
+            bool foundEnemy = false;
 
-            // 假设怪物的强度跟随玩家等级 (row[0]是PlayerLevel)
-            if (int.Parse(row[0]) == db.level)
+            for (int i = 1; i < eLines.Length; i++)
             {
-                // 存入 enemyTemplate 变量中，供 EnemySpawner 生成怪物时使用
-                db.enemyTemplateATK = float.Parse(row[1]);
-                db.enemyTemplateHP = float.Parse(row[3]);
-                db.enemyTemplateXP = int.Parse(row[4]);
-                db.enemyTemplateGroupID = int.Parse(row[5]);
-                break;
+                string[] row = eLines[i].Split(',');
+                if (row.Length < 6) continue;
+
+                // 第一列通常都是 Level (不管是玩家等级还是塔层数)
+                int csvLevel = int.Parse(row[0]);
+
+                if (csvLevel == searchTargetID)
+                {
+                    db.enemyTemplateATK = float.Parse(row[1]);
+                    // row[2] 是防御 E_DEF
+                    db.enemyTemplateHP = float.Parse(row[3]);
+                    db.enemyTemplateXP = int.Parse(row[4]);
+                    db.enemyTemplateGroupID = int.Parse(row[5]);
+
+                    foundEnemy = true;
+                    Debug.Log($"<color=cyan>怪物数据已加载 -> 文件:{enemyFileName} | 层级:{searchTargetID} | 攻:{db.enemyTemplateATK} | 血:{db.enemyTemplateHP}</color>");
+                    break;
+                }
             }
+
+            if (!foundEnemy)
+            {
+                Debug.LogWarning($"在表 {enemyFileName} 中未找到 ID 为 {searchTargetID} 的怪物数据！");
+            }
+        }
+        else
+        {
+            Debug.LogError($"找不到CSV文件: CSV_Data/{enemyFileName}");
         }
 
         // ==========================================
-        // 第四步：汇总计算与修正
+        // 第四步：汇总计算
         // ==========================================
-
-        // 加上武器属性
         db.finalATK += db.weaponATK;
         db.finalMaxHP += db.weaponHP;
 
-        // 【HP 初始化补丁】
-        // 如果是刚进入游戏(currentHP<=0)，或者升级/换装导致上限增加
-        // 我们这里简单处理：直接把血回满（或者你可以写复杂的逻辑）
+        // 回血补丁
         if (db.currentHP <= 0 || db.currentHP > db.finalMaxHP)
         {
             db.currentHP = db.finalMaxHP;
         }
 
-        Debug.Log($"<color=green>数据更新完毕: Lv.{db.level}, ATK:{db.finalATK}, 怪物模板HP:{db.enemyTemplateHP}</color>");
-
         // ==========================================
-        // 第五步：通知全世界
+        // 第五步：通知刷新
         // ==========================================
         GameEventManager.CallStatsChanged();
     }

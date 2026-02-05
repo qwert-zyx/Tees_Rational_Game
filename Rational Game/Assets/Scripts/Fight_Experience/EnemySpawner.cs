@@ -2,34 +2,24 @@ using UnityEngine;
 
 public class EnemySpawner : MonoBehaviour
 {
+    [Header("基础设置")]
     public GameObject enemyPrefab;
     public Transform spawnPoint;
-    public float spawnInterval = 3f;
-    public int[] spawnCountPool = { 1 };
+
+    [Header("挂机模式设置")]
+    public float spawnInterval = 3f; // 几秒刷一波
+    public int[] spawnCountPool = { 1, 1, 2 }; // 每次随机刷几只
+
+    [Header("爬塔模式设置")]
+    public int towerSpawnCount = 3; // 爬塔模式固定刷 3 只
+    public float enemySpacing = 1.5f; // 怪物间距
 
     private float timer;
-    private bool canSpawn = false; // 默认设为 false，看它会不会变 true
+    private bool canSpawn = true; // 控制挂机模式的开关
 
     void Awake()
     {
         GameEventManager.OnPlayerStateChanged += HandleStateChange;
-        Debug.Log("【侦探 1】Spawner Awake 执行了，开始监听信号");
-    }
-
-    void Start()
-    {
-        // 这里做一个保险：直接看看玩家现在的状态
-        // 如果 Spawner 醒来晚了，错过了广播，这里可以手动补救
-        var player = FindFirstObjectByType<PlayerController>();
-        if (player != null && player.currentState == PlayerState.Moving)
-        {
-            Debug.Log("【侦探 2】Spawner Start 检测到玩家已经在移动了，强制开启刷怪");
-            canSpawn = true;
-        }
-        else
-        {
-            Debug.Log("【侦探 2】Spawner Start 没检测到玩家或玩家没动。");
-        }
     }
 
     void OnDestroy()
@@ -37,55 +27,89 @@ public class EnemySpawner : MonoBehaviour
         GameEventManager.OnPlayerStateChanged -= HandleStateChange;
     }
 
+    void Start()
+    {
+        // ==========================================
+        // 【核心修改】如果是爬塔模式，开局直接刷完收工
+        // ==========================================
+        if (PlayerBaseData.Instance.isTowerMode)
+        {
+            SpawnTowerWave();
+        }
+    }
+
     void HandleStateChange(PlayerState state)
     {
-        // 打印一下接收到的状态
-        Debug.Log($"【侦探 3】Spawner 收到信号: {state}");
+        // 挂机模式下，只有玩家跑起来才刷怪
+        // 爬塔模式下，这个开关不影响（因为已经在 Start 里生成完了）
         canSpawn = (state == PlayerState.Moving);
     }
 
     void Update()
     {
-        // 如果不能刷，就不执行后面，打印一下原因（为了防止刷屏，只在第一次被阻挡时打印可以，但这里为了调试先简单处理）
+        // ==========================================
+        // 【核心修改】爬塔模式不需要计时器，直接 return
+        // ==========================================
+        if (PlayerBaseData.Instance.isTowerMode) return;
+
+        // --- 下面是原有的挂机刷怪逻辑 ---
         if (!canSpawn) return;
 
-        // 检查预制体是否存在
-        if (enemyPrefab == null)
-        {
-            Debug.LogError("【严重凶手】Enemy Prefab 居然是空的！请检查 Inspector 面板！");
-            canSpawn = false;
-            return;
-        }
-
         timer += Time.deltaTime;
-
-        // 打印 timer 看看时间走没走（这会刷屏，调试完记得删掉）
-        // Debug.Log($"【侦探 4】Timer: {timer}"); 
-
         if (timer >= spawnInterval)
         {
-            Debug.Log("【侦探 5】时间到！准备生成一波怪物");
-            SpawnWave();
+            SpawnGrindWave();
             timer = 0;
         }
     }
 
-    void SpawnWave()
+    // --- 逻辑 A：挂机模式刷一波 (随机数量) ---
+    void SpawnGrindWave()
     {
-        // 原有逻辑...
-        if (spawnCountPool.Length == 0) return;
+        if (enemyPrefab == null || spawnCountPool.Length == 0) return;
+
         int randomIndex = Random.Range(0, spawnCountPool.Length);
-        int countToSpawn = spawnCountPool[randomIndex];
+        int count = spawnCountPool[randomIndex];
 
-        for (int i = 0; i < countToSpawn; i++)
+        GenerateEnemies(count);
+    }
+
+    // --- 逻辑 B：爬塔模式刷一波 (固定数量) ---
+    void SpawnTowerWave()
+    {
+        if (enemyPrefab == null) return;
+
+        Debug.Log($"【爬塔模式】开始生成 {towerSpawnCount} 个敌人...");
+        GenerateEnemies(towerSpawnCount);
+    }
+
+    // --- 公用的生成方法 (不重复造轮子) ---
+    void GenerateEnemies(int count)
+    {
+        for (int i = 0; i < count; i++)
         {
-            Vector3 offset = Vector3.right * (i * 1.5f);
-
-            // 检查生成点
+            // 计算排列位置，横向排开
+            Vector3 offset = Vector3.right * (i * enemySpacing);
             Vector3 finalPos = (spawnPoint != null) ? spawnPoint.position + offset : transform.position + offset;
 
-            Instantiate(enemyPrefab, finalPos, Quaternion.identity);
+            CreateEnemy(finalPos);
         }
-        Debug.Log($"【侦探 6】成功生成了 {countToSpawn} 只怪");
+    }
+
+    // --- 创建单体并注入数据 ---
+    void CreateEnemy(Vector3 pos)
+    {
+        GameObject newEnemy = Instantiate(enemyPrefab, pos, Quaternion.identity);
+
+        // 注入数据
+        var db = PlayerBaseData.Instance;
+        var enemyData = newEnemy.GetComponent<SingleEnemyData>();
+
+        if (enemyData != null)
+        {
+            // 注意：这里读取的 template 属性，已经在 CheckCSV 里根据模式自动切换好了
+            // 所以这里不需要再写 if else，直接用就行
+            enemyData.Init(db.enemyTemplateHP, db.enemyTemplateATK, db.enemyTemplateXP, db.enemyTemplateGroupID);
+        }
     }
 }
