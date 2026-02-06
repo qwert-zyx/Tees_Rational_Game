@@ -63,6 +63,20 @@ public class TowerGameManager : MonoBehaviour
             Debug.Log("【裁判】时间耗尽！判定失败。");
             GameEventManager.CallLevelFailed(); // 广播失败信号
         }
+
+
+
+        // ==========================================
+        // 【新增测试代码】按下键盘 "L" (Lose) 强制失败
+        // ==========================================
+        if (Input.GetKeyDown(KeyCode.L))
+        {
+            Debug.Log("【强制测试】手动触发失败流程");
+            GameEventManager.CallLevelFailed();
+        }
+
+
+
     }
 
     // ==========================================

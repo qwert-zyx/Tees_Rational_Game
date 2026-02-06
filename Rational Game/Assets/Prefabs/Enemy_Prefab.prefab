@@ -203,8 +203,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b5ed21c4498a86d4db8df5be5afa9d6e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  showDebugLogs: 1
   attackInterval: 1.5
   rayDistance: 1
   playerLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 128

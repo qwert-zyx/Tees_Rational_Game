@@ -153,11 +153,23 @@ public class CheckCSV : MonoBehaviour
         db.finalMaxHP += db.weaponHP;
 
         // 回血补丁
+        /*
         if (db.currentHP <= 0 || db.currentHP > db.finalMaxHP)
         {
             db.currentHP = db.finalMaxHP;
         }
+        */
 
+
+        // 只限制上限，不限制下限（死了就是死了，别救我）
+        if (db.currentHP > db.finalMaxHP)
+        {
+            db.currentHP = db.finalMaxHP;
+        }
+
+        // 只有在HP真的没有初始化的时候（比如刚运行游戏是0），才初始化一次
+        // 但战斗中归零不要管
+        // 如果你需要开局回血，建议放在 PlayerHealth 的 Start 里做，而不是在这里。
         // ==========================================
         // 第五步：通知刷新
         // ==========================================
